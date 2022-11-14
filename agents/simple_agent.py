@@ -1,6 +1,7 @@
 from pysc2.agents import base_agent
 from pysc2.lib import actions
 from pysc2.lib import features
+from pysc2.env.environment import StepType
 
 import time
 
@@ -25,12 +26,12 @@ _NOT_QUEUED = [0]
 _QUEUED = [1]
 
 class SimpleAgent(base_agent.BaseAgent):
-    # tracked flags for decision making
+    # initial tracked flag values for decision making
     base_top_left = None
     supply_depot_built = False
     scv_selected = False
     barracks_built = False
-
+    
     # helper method to transform relative player view for 64x64 map
     def transformLocation(self, x, x_distance, y, y_distance):
         if not self.base_top_left:
@@ -58,19 +59,26 @@ class SimpleAgent(base_agent.BaseAgent):
         """
         super(SimpleAgent, self).step(obs)
         
+        # TODO change this to check obs.observation every step and update the values
+        if obs.step_type == StepType.FIRST:
+            self.base_top_left = None
+            self.supply_depot_built = False
+            self.scv_selected = False
+            self.barracks_built = False
+            
         # time.sleep(0.5)
         
         # for 64x64 map, if player_x | player_y <= 64/2, then player base is top left of 64x64 map
         # otherwise the player base is bottom right of 64x64 map
         if self.base_top_left is None:
-            player_y, player_x = (obs.observation["minimap"][_PLAYER_RELATIVE] == _PLAYER_SELF).nonzero()
+            player_y, player_x = (obs.observation["feature_minimap"][_PLAYER_RELATIVE] == _PLAYER_SELF).nonzero()
             self.base_top_left = player_y.mean() <= 31
 
         # Checkes if Supply depot has been built
         # if Supply depot has not been built, then select SCV unit and build it
         if not self.supply_depot_built:
             if not self.scv_selected:
-                unit_type = obs.observation["screen"][_UNIT_TYPE]
+                unit_type = obs.observation["feature_screen"][_UNIT_TYPE]
                 unit_y, unit_x = (unit_type == _TERRAN_SCV).nonzero()
 
                 target = [unit_x[0], unit_y[0]]
@@ -79,7 +87,7 @@ class SimpleAgent(base_agent.BaseAgent):
                 
                 return actions.FunctionCall(_SELECT_POINT, [_NOT_QUEUED, target])
             elif _BUILD_SUPPLYDEPOT in obs.observation["available_actions"]:
-                unit_type = obs.observation["screen"][_UNIT_TYPE]
+                unit_type = obs.observation["feature_screen"][_UNIT_TYPE]
                 unit_y, unit_x = (unit_type == _TERRAN_COMMANDCENTER).nonzero()
                 
                 target = self.transformLocation(int(unit_x.mean()), 0, int(unit_y.mean()), 20)
@@ -90,7 +98,7 @@ class SimpleAgent(base_agent.BaseAgent):
         # Checkes if Barracks has been built
         # if Barracks has not been built, then select SCV unit and build it
         elif not self.barracks_built and _BUILD_BARRACKS in obs.observation["available_actions"]:
-                unit_type = obs.observation["screen"][_UNIT_TYPE]
+                unit_type = obs.observation["feature_screen"][_UNIT_TYPE]
                 unit_y, unit_x = (unit_type == _TERRAN_COMMANDCENTER).nonzero()
                 
                 target = self.transformLocation(int(unit_x.mean()), 20, int(unit_y.mean()), 0)
