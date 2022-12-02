@@ -2,8 +2,8 @@
 
 ## Command notes
 
-Running the simple_agent with map Simple64 with terran race
-`python -m pysc2.bin.agent --map Simple64 --agent simple_agent.SimpleAgent --agent_race terran`
+Running the BuildingAgent class from agents.py with map Simple64 with terran race
+`python -m pysc2.bin.agent --map Simple64 --agent agents.BuildingAgent --agent_race terran`
 
 So the form is:
 `python -m pysc2.bin.agent --map <MapName> --agent <PythonFilename>.<AgentClass> --agent_race <random|protoss|terran|zerg>`
