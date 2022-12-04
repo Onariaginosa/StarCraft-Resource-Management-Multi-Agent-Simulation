@@ -1,11 +1,7 @@
 from pysc2.agents import base_agent
-from pysc2.lib.actions import FUNCTIONS, FunctionCall
+from pysc2.lib.actions import FUNCTIONS, FunctionCall, ActionSpace
 from pysc2.lib import features
 from pysc2.lib.units import Terran, Neutral
-
-import numpy
-
-from time import sleep
 
 
 # Functions (Function/Operation IDs)
@@ -82,6 +78,7 @@ class Agent(base_agent.BaseAgent):
             self.base_top_left = player_y.mean() <= 31
 
 
+
 class BuildingAgent(Agent):
 
     def step(self, obs):
@@ -91,57 +88,12 @@ class BuildingAgent(Agent):
         if self.base_top_left is None:
             self.locate_base(obs)
 
-        if not self.scv_selected: #self.supply_depot_built or not self.refinery_built or not self.barracks_built:
-            unit_type = obs.observation["feature_screen"][_UNIT_TYPE]
-            unit_y, unit_x = (unit_type == _SCV).nonzero()
-            target = [unit_x[0], unit_y[0]]
-            self.scv_selected = True
-            return FunctionCall(_SELECT_POINT, [_NOT_QUEUED, target])
-
         # Checkes if Supply depot has been built
         # if Supply depot has not been built, then select SCV unit and build it
-        elif not self.supply_depot_built and _BUILD_SUPPLYDEPOT in obs.observation["available_actions"]:
-            unit_type = obs.observation["feature_screen"][_UNIT_TYPE]
-            unit_y, unit_x = (unit_type == _COMMANDCENTER).nonzero()
-            target = self.transformLocation(int(unit_x.mean()), 0, int(unit_y.mean()), 20)
-            self.supply_depot_built = True
-            self.scv_selected = False
-            return FunctionCall(_BUILD_SUPPLYDEPOT, [_NOT_QUEUED, target])
-
-        # elif not self.refinery_built and _BUILD_REFINERY in obs.observation["available_actions"]:
-        #     unit_type = obs.observation["feature_screen"][_UNIT_TYPE]
-        #     unit_y, unit_x = (unit_type == Neutral.VespeneGeyser).nonzero()
-        #     target = [int(unit_x.mean()), int(unit_y.mean())]
-        #     self.refinery_built = True
-        #     self.scv_selected = False
-        #     return FunctionCall(_BUILD_REFINERY, [_NOT_QUEUED, target])
-
-        # Checkes if Barracks has been built
-        # if Barracks has not been built, then select SCV unit and build it
-        elif not self.barracks_built and _BUILD_BARRACKS in obs.observation["available_actions"]:
-            unit_type = obs.observation["feature_screen"][_UNIT_TYPE]
-            unit_y, unit_x = (unit_type == _COMMANDCENTER).nonzero()
-            target = self.transformLocation(int(unit_x.mean()), 20, int(unit_y.mean()), 0)
-            self.barracks_built = True
-            return FunctionCall(_BUILD_BARRACKS, [_NOT_QUEUED, target])
-
-        return FunctionCall(_NOOP, [])
-
-
-
-class ArmyAgent(Agent):
-
-    def step(self, obs):
-        super(ArmyAgent, self).step(obs)
-        if self.base_top_left is None:
-            self.locate_base(obs)
-
-        if not self.supply_depot_built:# or (obs.observation["player"][_SUPPLY_USED] == obs.observation["player"][_SUPPLY_MAX]):
+        if not self.supply_depot_built:
             if not self.scv_selected:
                 unit_type = obs.observation["feature_screen"][_UNIT_TYPE]
                 unit_y, unit_x = (unit_type == _SCV).nonzero()
-                # if not unit_y.any():
-                #     return FunctionCall(_NOOP, [])
                 target = [unit_x[0], unit_y[0]]
                 self.scv_selected = True
                 self.barracks_selected = False
@@ -153,15 +105,36 @@ class ArmyAgent(Agent):
                 target = self.transformLocation(int(unit_x.mean()), 0, int(unit_y.mean()), 20)
                 self.supply_depot_built = True
                 self.scv_selected = False
-
                 return FunctionCall(_BUILD_SUPPLYDEPOT, [_NOT_QUEUED, target])
 
+        # Checkes if Barracks has been built
+        # if Barracks has not been built, then select SCV unit and build it
         elif not self.barracks_built and _BUILD_BARRACKS in obs.observation["available_actions"]:
             unit_type = obs.observation["feature_screen"][_UNIT_TYPE]
             unit_y, unit_x = (unit_type == _COMMANDCENTER).nonzero()
             target = self.transformLocation(int(unit_x.mean()), 20, int(unit_y.mean()), 0)
             self.barracks_built = True
             return FunctionCall(_BUILD_BARRACKS, [_NOT_QUEUED, target])
+
+        # elif not self.refinery_built and _BUILD_REFINERY in obs.observation["available_actions"]:
+        #     unit_type = obs.observation["feature_screen"][_UNIT_TYPE]
+        #     unit_y, unit_x = (unit_type == Neutral.VespeneGeyser).nonzero()
+        #     target = [int(unit_x.mean()), int(unit_y.mean())]
+        #     self.refinery_built = True
+        #     self.scv_selected = False
+        #     return FunctionCall(_BUILD_REFINERY, [_NOT_QUEUED, target])
+
+        return FunctionCall(_NOOP, [])
+
+
+
+class ArmyAgent(BuildingAgent):
+
+    def step(self, obs):
+        base = super(ArmyAgent, self).step(obs)
+
+        if base != FunctionCall(_NOOP, []):
+            return base
 
         elif not self.barracks_rallied:
             if not self.barracks_selected:
@@ -179,13 +152,37 @@ class ArmyAgent(Agent):
                 return FunctionCall(_RALLY_UNITS_MINIMAP, [_NOT_QUEUED, [29, 46]])
 
         elif obs.observation["player"][_SUPPLY_USED] < obs.observation["player"][_SUPPLY_MAX] and _TRAIN_MARINE in obs.observation["available_actions"]:
-            return FunctionCall(_TRAIN_MARINE, [_QUEUED])
+            if not self.barracks_selected:
+                unit_type = obs.observation["feature_screen"][_UNIT_TYPE]
+                unit_y, unit_x = (unit_type == _BARRACKS).nonzero()
+                if unit_y.any():
+                    target = [int(unit_x.mean()), int(unit_y.mean())]
+                    self.barracks_selected = True
+                    self.scv_selected = False
+                    return FunctionCall(_SELECT_POINT, [_NOT_QUEUED, target])
+            else:
+                return FunctionCall(_TRAIN_MARINE, [_QUEUED])
+
+        elif obs.observation["player"][_SUPPLY_USED] == obs.observation["player"][_SUPPLY_MAX]:
+            if not self.scv_selected:
+                if FUNCTIONS.select_idle_worker.id in obs.observation["available_actions"]:
+                    self.scv_selected = True
+                    self.barracks_selected = False
+                    return FUNCTIONS.select_idle_worker("select", ActionSpace.FEATURES, _SCV)
+            elif _BUILD_SUPPLYDEPOT in obs.observation["available_actions"]:
+                unit_type = obs.observation["feature_screen"][_UNIT_TYPE]
+                unit_y, unit_x = (unit_type == _SUPPLYDEPOT).nonzero()
+                xy_shifts = [(10,0), (0,10), (-10,0), (0,-10)]
+                for (x,y) in xy_shifts:
+                    self.supply_depot_num += 1
+                    target = self.transformLocation(int(unit_x.mean()), 0, int(unit_y.mean()), 0)
+                    return FunctionCall(_BUILD_SUPPLYDEPOT, [_QUEUED, target])
 
         return FunctionCall(_NOOP, [])
 
 
 
-# class DefenceAgent(ArmyAgent):
+# class AttackAgent(ArmyAgent):
 
 #     def step(self, obs):
 #         super(DefenceAgent, self).step(obs)
