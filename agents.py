@@ -13,6 +13,7 @@ _BUILD_BARRACKS = FUNCTIONS.Build_Barracks_screen.id
 _BUILD_SUPPLYDEPOT = FUNCTIONS.Build_SupplyDepot_screen.id
 _BUILD_REFINERY = FUNCTIONS.Build_Refinery_screen.id
 _TRAIN_MARINE = FUNCTIONS.Train_Marine_quick.id
+_RALLY_UNITS_MINIMAP = FUNCTIONS.Rally_Units_minimap.id
 _NOOP = FUNCTIONS.no_op.id
 _SELECT_POINT = FUNCTIONS.select_point.id
 
@@ -35,9 +36,19 @@ _PLAYER_NEUTRAL = features.PlayerRelative.NEUTRAL  # beacon/minerals
 _PLAYER_ENEMY = features.PlayerRelative.ENEMY
 _NOT_QUEUED = [0]
 _QUEUED = [1]
+_SUPPLY_USED = 3
+_SUPPLY_MAX = 4
 
 
 class Agent(base_agent.BaseAgent):
+    base_top_left = None
+    supply_depot_built = False
+    barracks_built = False
+    refinery_built = False
+    scv_selected = False
+    barracks_selected = False
+    barracks_rallied = False
+    supply_depot_num = 0
 
     def __init__(self):
         super(Agent, self).__init__()
@@ -52,6 +63,9 @@ class Agent(base_agent.BaseAgent):
         self.barracks_built = False
         self.refinery_built = False
         self.scv_selected = False
+        self.barracks_selected = False
+        self.barracks_rallied = False
+        self.supply_depot_num = 0
 
     # helper method to transform relative player view for 64x64 map
     def transformLocation(self, x, x_distance, y, y_distance):
@@ -115,26 +129,33 @@ class BuildingAgent(Agent):
 
 
 
-class ArmyAgent(BuildingAgent):
+class ArmyAgent(Agent):
 
     def step(self, obs):
         super(ArmyAgent, self).step(obs)
         if self.base_top_left is None:
             self.locate_base(obs)
 
-        if not self.scv_selected: #self.supply_depot_built or not self.refinery_built or not self.barracks_built:
-            unit_type = obs.observation["feature_screen"][_UNIT_TYPE]
-            unit_y, unit_x = (unit_type == _SCV).nonzero()
-            target = [unit_x[0], unit_y[0]]
-            self.scv_selected = True
-            return FunctionCall(_SELECT_POINT, [_NOT_QUEUED, target])
-        elif not self.supply_depot_built and _BUILD_SUPPLYDEPOT in obs.observation["available_actions"]:
-            unit_type = obs.observation["feature_screen"][_UNIT_TYPE]
-            unit_y, unit_x = (unit_type == _COMMANDCENTER).nonzero()
-            target = self.transformLocation(int(unit_x.mean()), 0, int(unit_y.mean()), 20)
-            self.supply_depot_built = True
-            self.scv_selected = False
-            return FunctionCall(_BUILD_SUPPLYDEPOT, [_NOT_QUEUED, target])
+        if not self.supply_depot_built:# or (obs.observation["player"][_SUPPLY_USED] == obs.observation["player"][_SUPPLY_MAX]):
+            if not self.scv_selected:
+                unit_type = obs.observation["feature_screen"][_UNIT_TYPE]
+                unit_y, unit_x = (unit_type == _SCV).nonzero()
+                # if not unit_y.any():
+                #     return FunctionCall(_NOOP, [])
+                target = [unit_x[0], unit_y[0]]
+                self.scv_selected = True
+                self.barracks_selected = False
+                return FunctionCall(_SELECT_POINT, [_NOT_QUEUED, target])
+            elif _BUILD_SUPPLYDEPOT in obs.observation["available_actions"]:
+                unit_type = obs.observation["feature_screen"][_UNIT_TYPE]
+                unit_y, unit_x = (unit_type == _COMMANDCENTER).nonzero()
+                self.supply_depot_num += 1
+                target = self.transformLocation(int(unit_x.mean()), 0, int(unit_y.mean()), 20)
+                self.supply_depot_built = True
+                self.scv_selected = False
+
+                return FunctionCall(_BUILD_SUPPLYDEPOT, [_NOT_QUEUED, target])
+
         elif not self.barracks_built and _BUILD_BARRACKS in obs.observation["available_actions"]:
             unit_type = obs.observation["feature_screen"][_UNIT_TYPE]
             unit_y, unit_x = (unit_type == _COMMANDCENTER).nonzero()
@@ -142,16 +163,31 @@ class ArmyAgent(BuildingAgent):
             self.barracks_built = True
             return FunctionCall(_BUILD_BARRACKS, [_NOT_QUEUED, target])
 
-        if self.barracks_built == True:
-            return FunctionCall(_TRAIN_MARINE, [_NOT_QUEUED])
+        elif not self.barracks_rallied:
+            if not self.barracks_selected:
+                unit_type = obs.observation["feature_screen"][_UNIT_TYPE]
+                unit_y, unit_x = (unit_type == _BARRACKS).nonzero()
+                if unit_y.any():
+                    target = [int(unit_x.mean()), int(unit_y.mean())]
+                    self.barracks_selected = True
+                    self.scv_selected = False
+                    return FunctionCall(_SELECT_POINT, [_NOT_QUEUED, target])
+            else:
+                self.barracks_rallied = True
+                if self.base_top_left:
+                    return FunctionCall(_RALLY_UNITS_MINIMAP, [_NOT_QUEUED, [29, 21]])
+                return FunctionCall(_RALLY_UNITS_MINIMAP, [_NOT_QUEUED, [29, 46]])
+
+        elif obs.observation["player"][_SUPPLY_USED] < obs.observation["player"][_SUPPLY_MAX] and _TRAIN_MARINE in obs.observation["available_actions"]:
+            return FunctionCall(_TRAIN_MARINE, [_QUEUED])
 
         return FunctionCall(_NOOP, [])
 
 
 
-class DefenceAgent(ArmyAgent):
+# class DefenceAgent(ArmyAgent):
 
-    def step(self, obs):
-        super(DefenceAgent, self).step(obs)
+#     def step(self, obs):
+#         super(DefenceAgent, self).step(obs)
 
-        return FunctionCall(_NOOP, [])
+#         return FunctionCall(_NOOP, [])
