@@ -1,13 +1,12 @@
 from pysc2.agents import base_agent
 from pysc2.lib.actions import FUNCTIONS, FunctionCall, ActionSpace
 from pysc2.lib import features
-from pysc2.lib.units import Terran, Neutral
+from pysc2.lib.units import Terran
 
 
 # Functions (Function/Operation IDs)
 _BUILD_BARRACKS = FUNCTIONS.Build_Barracks_screen.id
 _BUILD_SUPPLYDEPOT = FUNCTIONS.Build_SupplyDepot_screen.id
-_BUILD_REFINERY = FUNCTIONS.Build_Refinery_screen.id
 _TRAIN_MARINE = FUNCTIONS.Train_Marine_quick.id
 _RALLY_UNITS_MINIMAP = FUNCTIONS.Rally_Units_minimap.id
 _NOOP = FUNCTIONS.no_op.id
@@ -24,11 +23,9 @@ _COMMANDCENTER = Terran.CommandCenter
 _SCV = Terran.SCV
 _SUPPLYDEPOT = Terran.SupplyDepot
 _BARRACKS = Terran.Barracks
-_REFINERY = Terran.Refinery
 
 # Parameters
 _PLAYER_SELF = features.PlayerRelative.SELF
-_PLAYER_NEUTRAL = features.PlayerRelative.NEUTRAL  # beacon/minerals
 _PLAYER_ENEMY = features.PlayerRelative.ENEMY
 _NOT_QUEUED = [0]
 _QUEUED = [1]
@@ -83,7 +80,6 @@ class BuildingAgent(Agent):
 
     def step(self, obs):
         super(BuildingAgent, self).step(obs)
-        # sleep(1)
 
         if self.base_top_left is None:
             self.locate_base(obs)
@@ -132,10 +128,8 @@ class ArmyAgent(BuildingAgent):
 
     def step(self, obs):
         base = super(ArmyAgent, self).step(obs)
-
         if base != FunctionCall(_NOOP, []):
             return base
-
         elif not self.barracks_rallied:
             if not self.barracks_selected:
                 unit_type = obs.observation["feature_screen"][_UNIT_TYPE]
@@ -151,7 +145,8 @@ class ArmyAgent(BuildingAgent):
                     return FunctionCall(_RALLY_UNITS_MINIMAP, [_NOT_QUEUED, [29, 21]])
                 return FunctionCall(_RALLY_UNITS_MINIMAP, [_NOT_QUEUED, [29, 46]])
 
-        elif obs.observation["player"][_SUPPLY_USED] < obs.observation["player"][_SUPPLY_MAX] and _TRAIN_MARINE in obs.observation["available_actions"]:
+        elif (obs.observation["player"][_SUPPLY_USED] < obs.observation["player"][_SUPPLY_MAX]
+              ) and _TRAIN_MARINE in obs.observation["available_actions"]:
             if not self.barracks_selected:
                 unit_type = obs.observation["feature_screen"][_UNIT_TYPE]
                 unit_y, unit_x = (unit_type == _BARRACKS).nonzero()
